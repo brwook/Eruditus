@@ -1,3 +1,5 @@
+.ssh
+.ssh/**
 .data
 .env
 **/__pycache__
@@ -6,3 +8,4 @@
 **/.idea
 **/.vscode
 **/*.pem
+
