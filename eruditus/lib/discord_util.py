@@ -148,7 +148,9 @@ async def add_challenge_worker(
         {"_id": challenge["_id"]},
         {"$set": {"players": challenge["players"]}},
     )
-    await challenge_thread.add_user(member)
+    # Public threads are visible without adding users; only add members to private threads.
+    if challenge_thread.type == discord.ChannelType.private_thread:
+        await challenge_thread.add_user(member)
 
 
 async def remove_challenge_worker(
@@ -168,7 +170,9 @@ async def remove_challenge_worker(
         {"_id": challenge["_id"]},
         {"$set": {"players": challenge["players"]}},
     )
-    await challenge_thread.remove_user(member)
+    # Public threads do not manage membership manually.
+    if challenge_thread.type == discord.ChannelType.private_thread:
+        await challenge_thread.remove_user(member)
 
 
 async def send_scoreboard(

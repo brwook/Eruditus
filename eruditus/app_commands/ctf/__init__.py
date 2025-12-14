@@ -342,9 +342,12 @@ class CTF(app_commands.Group):
         for thread in interaction.guild.threads:
             if thread.parent is None or thread.category_id != ctf["guild_category"]:
                 continue
-            await thread.edit(locked=locked, invitable=True)
+            kwargs = {"locked": locked}
+            if thread.type == discord.ChannelType.private_thread:
+                kwargs["invitable"] = True
+            await thread.edit(**kwargs)
 
-            if not members:
+            if not members or thread.type != discord.ChannelType.private_thread:
                 continue
 
             # XXX Until Discord supports changing threads privacy, this is the only
@@ -699,10 +702,10 @@ class CTF(app_commands.Group):
             interaction.guild, category_channel, category
         )
 
-        # Create a private thread for the challenge.
+        # Create a public thread for the challenge so everyone can see ongoing work.
         thread_name = sanitize_channel_name(name)
         challenge_thread = await text_channel.create_thread(
-            name=f"❌-{thread_name}", invitable=False
+            name=f"❌-{thread_name}", type=discord.ChannelType.public_thread
         )
 
         # Create an ObjectID for the challenge document.
@@ -719,7 +722,7 @@ class CTF(app_commands.Group):
             description=(
                 f"**Challenge name:** {name}\n"
                 f"**Category:** {category}\n\n"
-                f"Use `/ctf workon {name}` or the button to join.\n"
+                f"Use `/ctf workon {name}` or the button to mark yourself as working.\n"
                 f"{role.mention}"
             ),
             colour=discord.Colour.dark_gold(),

@@ -566,10 +566,10 @@ class Eruditus(discord.Client):
                     guild, category_channel, challenge.category
                 )
 
-                # Create a private thread for the challenge.
+                # Create a public thread for the challenge so everyone can see ongoing work.
                 thread_name = sanitize_channel_name(challenge.name)
                 challenge_thread = await text_channel.create_thread(
-                    name=f"❌-{thread_name}", invitable=False
+                    name=f"❌-{thread_name}", type=discord.ChannelType.public_thread
                 )
 
                 # Send out challenge information.
@@ -599,7 +599,7 @@ class Eruditus(discord.Client):
                     description=(
                         f"**Challenge name:** {challenge.name}\n"
                         f"**Category:** {challenge.category}\n\n"
-                        f"Use `/ctf workon {challenge.name}` or the button to join."
+                        f"Use `/ctf workon {challenge.name}` or the button to mark yourself as working."
                         f"\n{role.mention}"
                     ),
                     colour=discord.Colour.dark_gold(),
