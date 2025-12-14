@@ -358,7 +358,7 @@ class CTF(app_commands.Group):
             await message.delete()
 
         # Change channels permissions according to the `permissions` parameter.
-        members = [
+        ctf_members = [
             member
             async for member in interaction.guild.fetch_members(limit=None)
             if role in member.roles
@@ -368,22 +368,16 @@ class CTF(app_commands.Group):
         perm_rdonly = discord.PermissionOverwrite(
             read_messages=True, send_messages=False
         )
+        member_perm = perm_rdwr if permissions == Permissions.RDWR else perm_rdonly
 
         ctf_general_channel = discord.utils.get(
             interaction.guild.text_channels,
             category_id=ctf["guild_category"],
             name="general",
         )
-        overwrites = {member: perm_rdwr for member in members}
-        overwrites[interaction.guild.default_role] = discord.PermissionOverwrite(
-            read_messages=False
-        )
+        overwrites = {interaction.guild.default_role: perm_rdonly}
+        overwrites.update({member: member_perm for member in ctf_members})
         await ctf_general_channel.edit(overwrites=overwrites)
-
-        for member in members:
-            overwrites[member] = (
-                perm_rdonly if permissions == Permissions.RDONLY else perm_rdwr
-            )
 
         await category_channel.edit(name=f"🔒 {ctf['name']}", overwrites=overwrites)
         for ctf_channel in category_channel.channels:
