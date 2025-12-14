@@ -503,14 +503,6 @@ class Eruditus(discord.Client):
             # Ignore this event if not too many people are interested in it.
             users = [user async for user in scheduled_event.users()]
             if len(users) < MIN_PLAYERS:
-                if reminder_channel:
-                    await reminder_channel.send(
-                        f"🔔 CTF `{event_name}` starting "
-                        f"<t:{scheduled_event.start_time.timestamp():.0f}:R>.\n"
-                        f"This CTF was not created automatically because less than"
-                        f" {MIN_PLAYERS} players were willing to participate.\n"
-                        f"You can still create it manually using `/ctf createctf`."
-                    )
                 continue
 
             # If a CTF is starting soon, we create it if it wasn't created yet.
@@ -519,15 +511,6 @@ class Eruditus(discord.Client):
             await self.add_event_roles_to_members_and_register(
                 guild, ctf, users, scheduled_event
             )
-
-            # Send a reminder that the CTF is starting soon.
-            if reminder_channel:
-                await reminder_channel.send(
-                    f"🔔 CTF `{ctf['name']}` starting "
-                    f"<t:{scheduled_event.start_time.timestamp():.0f}:R>.\n"
-                    f"@here you can still use `/ctf join` to participate in case "
-                    f"you forgot to hit the `Interested` button of the event."
-                )
 
     @tasks.loop(hours=3, reconnect=True)
     async def create_upcoming_events(self) -> None:
