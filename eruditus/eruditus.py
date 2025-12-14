@@ -194,6 +194,7 @@ class Eruditus(discord.Client):
                 "bot-cmds": bot_cmds_channel.id,
             },
             "reminder_message": None,
+            "reminder_channel": None,
         }
         MONGO[DBNAME][CTF_COLLECTION].insert_one(ctf)
 
@@ -212,9 +213,15 @@ class Eruditus(discord.Client):
                 reminder_message = await reminder_target.send(embed=embed)
                 await reminder_message.add_reaction("🏁")
                 ctf["reminder_message"] = reminder_message.id
+                ctf["reminder_channel"] = getattr(reminder_target, "id", None)
                 MONGO[DBNAME][CTF_COLLECTION].update_one(
                     {"_id": ctf["_id"]},
-                    {"$set": {"reminder_message": reminder_message.id}},
+                    {
+                        "$set": {
+                            "reminder_message": reminder_message.id,
+                            "reminder_channel": ctf["reminder_channel"],
+                        }
+                    },
                 )
             except discord.HTTPException as exc:
                 logger.warning("Failed to post reminder for %s: %s", name, exc)

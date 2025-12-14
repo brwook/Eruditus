@@ -461,6 +461,23 @@ class CTF(app_commands.Group):
         )
         role = discord.utils.get(interaction.guild.roles, id=ctf["guild_role"])
 
+        # Delete the reminder message if we posted one.
+        reminder_message_id = ctf.get("reminder_message")
+        if reminder_message_id:
+            reminder_channel = (
+                interaction.guild.get_channel(ctf.get("reminder_channel"))
+                if ctf.get("reminder_channel")
+                else None
+            )
+            if reminder_channel:
+                try:
+                    reminder_message = await reminder_channel.fetch_message(
+                        reminder_message_id
+                    )
+                    await reminder_message.delete()
+                except discord.HTTPException:
+                    pass
+
         # Delete all channels.
         for ctf_channel in category_channel.channels:
             await ctf_channel.delete()
