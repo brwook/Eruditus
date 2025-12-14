@@ -140,16 +140,33 @@ class CTF(app_commands.Group):
     @app_commands.checks.bot_has_permissions(manage_channels=True, manage_roles=True)
     @app_commands.checks.has_permissions(manage_channels=True, manage_roles=True)
     @app_commands.command()
-    async def createctf(self, interaction: discord.Interaction, name: str) -> None:
+    async def createctf(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        use_configured_reminder_channel: bool = False,
+    ) -> None:
         """Create a new CTF.
 
         Args:
             interaction: The interaction that triggered this command.
             name: Name of the CTF to create (case insensitive).
+            use_configured_reminder_channel: Post the auto-join reminder in the
+                configured reminder channel instead of the current channel.
         """
         await interaction.response.defer()
 
-        ctf = await interaction.client.create_ctf(name)
+        reminder_channel = None
+        if use_configured_reminder_channel:
+            reminder_channel = interaction.client._get_reminder_channel(
+                interaction.guild
+            )
+        else:
+            reminder_channel = interaction.channel
+
+        ctf = await interaction.client.create_ctf(
+            name, reminder_channel=reminder_channel
+        )
         if ctf:
             await interaction.followup.send(f"✅ CTF `{name}` has been created.")
             return

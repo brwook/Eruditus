@@ -3,11 +3,12 @@ import os
 import traceback
 from binascii import hexlify
 from datetime import datetime, timedelta
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 import aiohttp
 import discord
 from bson import ObjectId
+from discord.abc import Messageable
 from discord.ext import tasks
 from discord.utils import setup_logging
 
@@ -69,8 +70,30 @@ class Eruditus(discord.Client):
         self.previous_team_info = None
         self.previous_leaderboard = None
 
+    def _get_reminder_channel(
+        self, guild: discord.Guild
+    ) -> Optional[discord.TextChannel]:
+        """Return a public channel to send reminders to, preferring configured or general."""
+        if config.REMINDER_CHANNEL is not None:
+            channel = self.get_channel(config.REMINDER_CHANNEL)
+            if isinstance(channel, discord.TextChannel):
+                return channel
+
+        fallback = None
+        for channel in guild.text_channels:
+            if channel.permissions_for(guild.default_role).read_messages:
+                if "general" in channel.name:
+                    return channel
+                fallback = fallback or channel
+
+        return fallback
+
     async def create_ctf(
-        self, name: str, live: bool = True, return_if_exists: bool = False
+        self,
+        name: str,
+        live: bool = True,
+        return_if_exists: bool = False,
+        reminder_channel: Optional[Messageable] = None,
     ) -> Union[dict, None]:
         """Create a CTF along with its channels and role.
 
@@ -79,6 +102,8 @@ class Eruditus(discord.Client):
             live: True if the CTF is ongoing.
             return_if_exists: Causes the function to return the CTF object instead of
                 None in case it exists.
+            reminder_channel: Channel to post the auto-join reminder to. When not
+                provided, falls back to the configured reminder channel.
 
         Returns:
             A dictionary containing information about the created CTF, or None if the
@@ -168,8 +193,32 @@ class Eruditus(discord.Client):
                 "notes": notes_channel.id,
                 "bot-cmds": bot_cmds_channel.id,
             },
+            "reminder_message": None,
         }
         MONGO[DBNAME][CTF_COLLECTION].insert_one(ctf)
+
+        # Post an auto-join prompt in the reminder channel.
+        reminder_target = reminder_channel or self._get_reminder_channel(guild)
+        if reminder_target:
+            try:
+                embed = discord.Embed(
+                    title=f"CTF {name} is live!",
+                    description=(
+                        "React with 🏁 to join.\n"
+                        f"Prefer slash commands? Run `/ctf join {name}`."
+                    ),
+                    colour=discord.Colour.dark_gold(),
+                )
+                reminder_message = await reminder_target.send(embed=embed)
+                await reminder_message.add_reaction("🏁")
+                ctf["reminder_message"] = reminder_message.id
+                MONGO[DBNAME][CTF_COLLECTION].update_one(
+                    {"_id": ctf["_id"]},
+                    {"$set": {"reminder_message": reminder_message.id}},
+                )
+            except discord.HTTPException as exc:
+                logger.warning("Failed to post reminder for %s: %s", name, exc)
+
         return ctf
 
     async def setup_hook(self) -> None:
@@ -365,6 +414,49 @@ class Eruditus(discord.Client):
             )
             await category_channel.edit(name=category_channel.name.replace("🔴", "🏁"))
 
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        """Auto-join a CTF when someone reacts with a checkered flag on its reminder."""
+        if payload.user_id == self.user.id or str(payload.emoji) != "🏁":
+            return
+
+        ctf = MONGO[DBNAME][CTF_COLLECTION].find_one(
+            {"reminder_message": payload.message_id}
+        )
+        if ctf is None or ctf.get("archived") or ctf.get("ended"):
+            return
+
+        guild = self.get_guild(payload.guild_id)
+        if guild is None:
+            return
+
+        member = guild.get_member(payload.user_id) or await guild.fetch_member(
+            payload.user_id
+        )
+        role = discord.utils.get(guild.roles, id=ctf["guild_role"])
+        if member is None or role is None or role in member.roles:
+            return
+
+        if ctf.get("private"):
+            try:
+                await member.send(
+                    f"CTF `{ctf['name']}` is private and requires an admin invitation."
+                )
+            except discord.HTTPException:
+                pass
+            return
+
+        await member.add_roles(role)
+
+        ctf_general_channel = discord.utils.get(
+            guild.text_channels,
+            category_id=ctf["guild_category"],
+            name="general",
+        )
+        if ctf_general_channel:
+            await ctf_general_channel.send(
+                f"{member.mention} joined."
+            )
+
     @tasks.loop(minutes=5, reconnect=True)
     async def ctf_reminder(self) -> None:
         """Create a CTF for events starting soon and send a reminder."""
@@ -377,16 +469,7 @@ class Eruditus(discord.Client):
         # The bot is supposed to be part of a single guild.
         guild = self.get_guild(GUILD_ID)
 
-        if config.REMINDER_CHANNEL is None:
-            # Find a public channel where we can send our reminders.
-            reminder_channel = None
-            for channel in guild.text_channels:
-                if channel.permissions_for(guild.default_role).read_messages:
-                    reminder_channel = channel
-                    if "general" in reminder_channel.name:
-                        break
-        else:
-            reminder_channel = self.get_channel(config.REMINDER_CHANNEL)
+        reminder_channel = self._get_reminder_channel(guild)
 
         for scheduled_event in guild.scheduled_events:
             if (
